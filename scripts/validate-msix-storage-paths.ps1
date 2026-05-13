@@ -451,8 +451,19 @@ function Invoke-CapturedProcess {
 
     Push-Location $WorkingDirectory
     try {
-        & $FilePath @ArgumentList > $stdoutFile 2> $stderrFile
-        $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int]$global:LASTEXITCODE }
+        # Use Start-Process -Wait so we block on GUI-subsystem (WinExe) executables;
+        # PowerShell's `&` returns immediately for those, making $LASTEXITCODE unreliable.
+        $spArgs = @{
+            FilePath               = $FilePath
+            NoNewWindow            = $true
+            Wait                   = $true
+            PassThru               = $true
+            RedirectStandardOutput = $stdoutFile
+            RedirectStandardError  = $stderrFile
+        }
+        if ($ArgumentList.Count -gt 0) { $spArgs.ArgumentList = $ArgumentList }
+        $proc = Start-Process @spArgs
+        $exitCode = [int]$proc.ExitCode
     }
     finally {
         Pop-Location
@@ -831,8 +842,11 @@ function Invoke-CliEngineUninstall {
 
     $exitCode = $null
     try {
-        & $exePath @cliArgs > $stdoutPath 2> $stderrPath
-        $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int]$global:LASTEXITCODE }
+        # WinExe target — use Start-Process -Wait to block until exit; `&` would race ahead.
+        $proc = Start-Process -FilePath $exePath -ArgumentList $cliArgs `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        $exitCode = [int]$proc.ExitCode
     }
     catch {
         $exitCode = -1

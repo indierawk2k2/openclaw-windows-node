@@ -979,8 +979,12 @@ try {
                 if (-not $isDryRun)       { $cliArgs += '--confirm-destructive' }
 
                 try {
-                    & $trayExe @cliArgs
-                    $cliExitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { $global:LASTEXITCODE }
+                    # OpenClaw.Tray.WinUI.exe is OutputType=WinExe; PowerShell's `&` does NOT
+                    # block on GUI-subsystem processes, so $LASTEXITCODE would be sampled
+                    # before the engine had run. Use Start-Process -Wait to block until exit.
+                    $cliProc = Start-Process -FilePath $trayExe -ArgumentList $cliArgs `
+                        -NoNewWindow -Wait -PassThru
+                    $cliExitCode = $cliProc.ExitCode
 
                     Add-Step -Name 'cli-uninstall-delegate' -Status 'Completed' `
                         -Message "Exit code: $cliExitCode. JSON: $cliJsonPath"

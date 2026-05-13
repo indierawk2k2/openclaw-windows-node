@@ -61,8 +61,13 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 # ---------------------------------------------------------------------------
 $exitCode = 0
 try {
-    & $exePath --uninstall --confirm-destructive --json-output $resultPath
-    $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { $global:LASTEXITCODE }
+    # OpenClaw.Tray.WinUI.exe is OutputType=WinExe; PowerShell's `&` does NOT block on
+    # GUI-subsystem processes, so the Inno uninstaller would proceed before the engine
+    # finished. Use Start-Process -Wait so we don't race the engine's destructive work.
+    $cliArgs = @('--uninstall', '--confirm-destructive', '--json-output', $resultPath)
+    $cliProc = Start-Process -FilePath $exePath -ArgumentList $cliArgs `
+        -NoNewWindow -Wait -PassThru
+    $exitCode = $cliProc.ExitCode
 
     if ($exitCode -eq 0) {
         Write-Host "OpenClaw local WSL gateway removed successfully." -ForegroundColor Green
