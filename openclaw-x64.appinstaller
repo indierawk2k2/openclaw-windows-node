@@ -10,7 +10,7 @@
                                e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
     x64 - x64 or arm64; must match the MSIX package
     https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-e2e-blue-lobster-update-test-2026-05-20-1325/OpenClawCompanion-0.4.8-win-x64.msix             - absolute URL of the matching architecture .msix
-    https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller     - absolute URL of THIS rendered .appinstaller file
+    https://indierawk2k2.github.io/openclaw-windows-node/openclaw-x64.appinstaller     - absolute URL of THIS rendered .appinstaller file
                                on the stable channel (e.g. GitHub Pages)
 
   See docs/RELEASING.md for the AppInstaller update flow and hosting caveats.
@@ -18,7 +18,7 @@
 <AppInstaller
   xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
   Version="0.4.8.0"
-  Uri="https://openclaw.github.io/openclaw-windows-node/openclaw-x64.appinstaller">
+  Uri="https://indierawk2k2.github.io/openclaw-windows-node/openclaw-x64.appinstaller">
 
   <MainPackage
     Name="OpenClaw.Companion"
