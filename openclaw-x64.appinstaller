@@ -4,12 +4,12 @@
 
   CI renders this template per tag in .github/workflows/ci.yml (release job)
   via scripts/render-appinstaller.ps1 by string-substituting:
-    0.4.8.1              - 4-part version, e.g. 0.5.3.0 (must match the
+    0.4.9.1              - 4-part version, e.g. 0.5.3.0 (must match the
                                MSIX <Identity Version="…"> exactly)
     CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US            - quoted publisher subject from the MSIX manifest
                                e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
     x64 - x64 or arm64; must match the MSIX package
-    https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-e2e-dev-feed-test-2026-05-20-2028/OpenClawCompanion-0.4.8.1-win-x64.msix             - absolute URL of the matching architecture .msix
+    https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-e2e-dev-feed-blue-update-2026-05-20-2035/OpenClawCompanion-0.4.9.1-win-x64.msix             - absolute URL of the matching architecture .msix
     https://indierawk2k2.github.io/openclaw-windows-node/openclaw-x64.appinstaller     - absolute URL of THIS rendered .appinstaller file
                                on the stable channel (e.g. GitHub Pages)
 
@@ -17,15 +17,15 @@
 -->
 <AppInstaller
   xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
-  Version="0.4.8.1"
+  Version="0.4.9.1"
   Uri="https://indierawk2k2.github.io/openclaw-windows-node/openclaw-x64.appinstaller">
 
   <MainPackage
     Name="OpenClaw.Companion"
     Publisher="CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
-    Version="0.4.8.1"
+    Version="0.4.9.1"
     ProcessorArchitecture="x64"
-    Uri="https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-e2e-dev-feed-test-2026-05-20-2028/OpenClawCompanion-0.4.8.1-win-x64.msix" />
+    Uri="https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-e2e-dev-feed-blue-update-2026-05-20-2035/OpenClawCompanion-0.4.9.1-win-x64.msix" />
 
   <!-- Quiet OS-managed background checks. No OnLaunch UI and no downgrade rollback. -->
   <UpdateSettings>
