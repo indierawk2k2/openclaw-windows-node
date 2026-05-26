@@ -1,17 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  OpenClaw Companion AppInstaller template.
+
+  CI renders this template per tag in .github/workflows/ci.yml (release job)
+  via scripts/render-appinstaller.ps1 by string-substituting:
+    0.4.91.0              - 4-part version, e.g. 0.5.3.0 (must match the
+                               MSIX <Identity Version="…"> exactly)
+    CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US            - quoted publisher subject from the MSIX manifest
+                               e.g. "CN=Scott Hanselman, O=Scott Hanselman, …"
+    arm64 - x64 or arm64; must match the MSIX package
+    OpenClaw.Companion        - MSIX package identity, e.g. OpenClaw.Companion
+    https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-red-blue-feed-test-2026-05-22/OpenClawCompanion-blue-0.4.91.0-win-arm64.msix             - absolute URL of the matching architecture .msix
+    https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-feed-branch-2026-05-22/installer/appinstaller/openclaw-arm64.appinstaller     - absolute URL of THIS rendered .appinstaller file
+                               on the stable channel
+
+  See docs/RELEASING.md for the AppInstaller update flow and hosting caveats.
+-->
 <AppInstaller
   xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
-  Version="0.0.0.0"
-  Uri="https://raw.githubusercontent.com/openclaw/openclaw-windows-node/master/installer/appinstaller/openclaw-arm64.appinstaller">
+  Version="0.4.91.0"
+  Uri="https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-feed-branch-2026-05-22/installer/appinstaller/openclaw-arm64.appinstaller">
 
   <MainPackage
     Name="OpenClaw.Companion"
     Publisher="CN=Scott Hanselman, O=Scott Hanselman, L=Forest Grove, S=Oregon, C=US"
-    Version="0.0.0.0"
+    Version="0.4.91.0"
     ProcessorArchitecture="arm64"
-    Uri="https://github.com/openclaw/openclaw-windows-node/releases/download/v0.0.0/OpenClawCompanion-0.0.0-win-arm64.msix" />
+    Uri="https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-red-blue-feed-test-2026-05-22/OpenClawCompanion-blue-0.4.91.0-win-arm64.msix" />
 
+  <!-- Quiet OS-managed background checks. No OnLaunch UI and no downgrade rollback. -->
   <UpdateSettings>
     <AutomaticBackgroundTask />
   </UpdateSettings>
 </AppInstaller>
+
