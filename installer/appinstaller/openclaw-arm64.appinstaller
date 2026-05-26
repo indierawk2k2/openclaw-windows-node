@@ -11,7 +11,7 @@
     arm64 - x64 or arm64; must match the MSIX package
     OpenClaw.Companion        - MSIX package identity, e.g. OpenClaw.Companion
     https://github.com/indierawk2k2/openclaw-windows-node/releases/download/msix-red-blue-feed-test-2026-05-22/OpenClawCompanion-blue-0.4.91.0-win-arm64.msix             - absolute URL of the matching architecture .msix
-    https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-feed-branch-2026-05-22/installer/appinstaller/openclaw-arm64.appinstaller     - absolute URL of THIS rendered .appinstaller file
+    https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-arm64-feed-branch-2026-05-26/installer/appinstaller/openclaw-arm64.appinstaller     - absolute URL of THIS rendered .appinstaller file
                                on the stable channel
 
   See docs/RELEASING.md for the AppInstaller update flow and hosting caveats.
@@ -19,7 +19,7 @@
 <AppInstaller
   xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
   Version="0.4.91.0"
-  Uri="https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-feed-branch-2026-05-22/installer/appinstaller/openclaw-arm64.appinstaller">
+  Uri="https://raw.githubusercontent.com/indierawk2k2/openclaw-windows-node/msix-red-blue-arm64-feed-branch-2026-05-26/installer/appinstaller/openclaw-arm64.appinstaller">
 
   <MainPackage
     Name="OpenClaw.Companion"
