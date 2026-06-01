@@ -77,6 +77,7 @@
 
   <PropertyGroup>
     <OpenClawRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</OpenClawRepoRoot>
+    <OpenClawTrayGeneratedOutputDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)bin\$(Configuration)\$(TargetFramework)\$(RuntimeIdentifier)\'))</OpenClawTrayGeneratedOutputDirectory>
     <!-- RID-derived arch for tools/mxc/<arch>/wxc-exec.exe. Falls back to x64
          when no RID is present (e.g. unpackaged debug builds). -->
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == 'win-arm64'">arm64</MxcArch>
@@ -229,6 +230,20 @@
        silently ship without wxc-exec. -->
   <Target Name="ValidateWxcExecPublished" AfterTargets="CopyWxcExecToPublish" Condition="'$(PublishDir)' != '' And '$(VerifyWxcExecShipped)' != 'false' And '$(SkipMxcNodeBridgeRestore)' != 'true'">
     <Error Condition="!Exists('$(PublishDir)tools\mxc\$(MxcArch)\wxc-exec.exe')" Text="wxc-exec.exe missing at $(PublishDir)tools\mxc\$(MxcArch)\. Publish-time copy did not run; check MxcArch=$(MxcArch), MxcSdkBinDir=$(MxcSdkBinDir)." />
+  </Target>
+
+  <!-- dotnet publish for unpackaged WinUI can omit generated XAML artifacts;
+       copy the compiled layout/resources so Inno payloads can load XAML. -->
+  <Target Name="CopyGeneratedWinUiArtifactsToPublish"
+          AfterTargets="Publish"
+          Condition="'$(PackageMsix)' != 'true' And '$(PublishDir)' != '' And '$(RuntimeIdentifier)' != ''">
+    <ItemGroup>
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawTrayGeneratedOutputDirectory)**\*.xbf" Exclude="$(OpenClawTrayGeneratedOutputDirectory)publish\**\*" />
+      <_GeneratedWinUiPublishArtifacts Include="$(OpenClawTrayGeneratedOutputDirectory)**\*.pri" Exclude="$(OpenClawTrayGeneratedOutputDirectory)publish\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_GeneratedWinUiPublishArtifacts)"
+          DestinationFiles="@(_GeneratedWinUiPublishArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
   </Target>
 
   <!-- Copy WebView2Loader.dll to output root for unpackaged app (not needed for MSIX) -->

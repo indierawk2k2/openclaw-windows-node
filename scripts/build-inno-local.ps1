@@ -148,11 +148,19 @@ function Assert-PayloadReady {
 
     $publishDir = Join-Path $repoRoot "publish-local-$Architecture"
     $trayExe = Join-Path $publishDir "OpenClaw.Tray.WinUI.exe"
+    $trayPri = Join-Path $publishDir "OpenClaw.Tray.WinUI.pri"
+    $trayXbf = Join-Path $publishDir "Windows\TrayMenuWindow.xbf"
     $setupExe = Join-Path $publishDir "SetupEngine\OpenClaw.SetupEngine.UI.exe"
     $identityPackage = Join-Path $publishDir "OpenClaw.PackageIdentity.msix"
 
     if (-not (Test-Path -LiteralPath $trayExe)) {
         throw "Missing tray payload at $trayExe. Rerun without -NoPublish."
+    }
+    if (-not (Test-Path -LiteralPath $trayPri)) {
+        throw "Missing tray WinUI PRI at $trayPri. Rerun without -NoPublish."
+    }
+    if (-not (Test-Path -LiteralPath $trayXbf)) {
+        throw "Missing tray WinUI XBF at $trayXbf. Rerun without -NoPublish."
     }
 
     if (-not (Test-Path -LiteralPath $setupExe)) {

@@ -9,5 +9,5 @@ internal sealed class AppLogger : IOpenClawLogger
     public void Debug(string message) => Logger.Debug(message);
     public void Warn(string message) => Logger.Warn(message);
     public void Error(string message, Exception? ex = null) =>
-        Logger.Error(ex != null ? $"{message}: {ex.Message}" : message);
+        Logger.Error(ex != null ? $"{message}: {ex}" : message);
 }

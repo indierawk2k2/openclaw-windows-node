@@ -171,8 +171,12 @@ public sealed class InstallerIssAssertionTests
     [Fact]
     public void ReleaseBuildCopiesSetupEngineIntoInstallerPayload()
     {
-        var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
-        var ci = File.ReadAllText(Path.Combine(GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
+        var root = GetRepositoryRoot();
+        var iss = File.ReadAllText(Path.Combine(root, "installer.iss"));
+        var ci = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var trayProject = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var buildInnoLocal = File.ReadAllText(Path.Combine(root, "scripts", "build-inno-local.ps1"));
 
         Assert.Contains(@"FileExists(publish + ""\SetupEngine\OpenClaw.SetupEngine.UI.exe"")", iss);
         Assert.Contains("Publish SetupEngine.UI", ci);
@@ -183,6 +187,14 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"assemblySemFileVer: ${{ steps.gitversion.outputs.assemblySemFileVer }}", ci);
         Assert.Contains(@".\scripts\build-package-identity.ps1 -OutputPath publish\OpenClaw.PackageIdentity.msix", ci);
         Assert.Contains(@"-Version ""${{ needs.test.outputs.assemblySemFileVer }}""", ci);
+        Assert.Contains("CopyGeneratedWinUiArtifactsToPublish", trayProject);
+        Assert.Contains(@"**\*.xbf", trayProject);
+        Assert.Contains(@"**\*.pri", trayProject);
+        Assert.Contains("Verify WinUI publish artifacts", ci);
+        Assert.Contains(@"publish\Windows\TrayMenuWindow.xbf", ci);
+        Assert.Contains(@"publish\OpenClaw.Tray.WinUI.pri", ci);
+        Assert.Contains(@"Windows\TrayMenuWindow.xbf", buildInnoLocal);
+        Assert.Contains(@"OpenClaw.Tray.WinUI.pri", buildInnoLocal);
     }
 
     [Fact]

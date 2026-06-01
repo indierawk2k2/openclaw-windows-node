@@ -399,6 +399,20 @@ jobs:
       shell: pwsh
       run: .\scripts\build-package-identity.ps1 -OutputPath publish\OpenClaw.PackageIdentity.msix -Version "${{ needs.test.outputs.assemblySemFileVer }}"
 
+    - name: Verify WinUI publish artifacts
+      shell: pwsh
+      run: |
+        foreach ($path in @(
+          "publish\OpenClaw.Tray.WinUI.pri",
+          "publish\Windows\TrayMenuWindow.xbf",
+          "publish\SetupEngine\OpenClaw.SetupEngine.UI.pri",
+          "publish\SetupEngine\SetupWindow.xbf"
+        )) {
+          if (-not (Test-Path -LiteralPath $path)) {
+            throw "Required WinUI publish artifact missing: $path"
+          }
+        }
+
     - name: Verify x64 Native Runtime Payload
       if: matrix.rid == 'win-x64'
       shell: pwsh
