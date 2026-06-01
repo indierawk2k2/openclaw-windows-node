@@ -85,7 +85,8 @@ function Publish-ArchitecturePayload {
     param(
         [string]$Architecture,
         [string]$RuntimeIdentifier,
-        [string]$PublishVersion
+        [string]$PublishVersion,
+        [string]$PackageIdentityVersion
     )
 
     $publishDir = Join-Path $repoRoot "publish-local-$Architecture"
@@ -132,6 +133,14 @@ function Publish-ArchitecturePayload {
     $setupDest = Join-Path $publishDir "SetupEngine"
     New-Item -ItemType Directory -Path $setupDest -Force | Out-Null
     Copy-Item -Path (Join-Path $setupPublishDir "*") -Destination $setupDest -Recurse -Force
+
+    Write-Step "Building $Architecture package identity"
+    & (Join-Path $PSScriptRoot "build-package-identity.ps1") `
+        -OutputPath (Join-Path $publishDir "OpenClaw.PackageIdentity.msix") `
+        -Version $PackageIdentityVersion
+    if ($LASTEXITCODE -ne 0) {
+        throw "Package identity build failed for $Architecture."
+    }
 }
 
 function Assert-PayloadReady {
@@ -140,6 +149,7 @@ function Assert-PayloadReady {
     $publishDir = Join-Path $repoRoot "publish-local-$Architecture"
     $trayExe = Join-Path $publishDir "OpenClaw.Tray.WinUI.exe"
     $setupExe = Join-Path $publishDir "SetupEngine\OpenClaw.SetupEngine.UI.exe"
+    $identityPackage = Join-Path $publishDir "OpenClaw.PackageIdentity.msix"
 
     if (-not (Test-Path -LiteralPath $trayExe)) {
         throw "Missing tray payload at $trayExe. Rerun without -NoPublish."
@@ -147,6 +157,10 @@ function Assert-PayloadReady {
 
     if (-not (Test-Path -LiteralPath $setupExe)) {
         throw "Missing setup payload at $setupExe. Rerun without -NoPublish."
+    }
+
+    if (-not (Test-Path -LiteralPath $identityPackage)) {
+        throw "Missing package identity payload at $identityPackage. Rerun without -NoPublish."
     }
 
     return $publishDir
@@ -187,9 +201,19 @@ if (-not $Version) {
     $versionScript = Join-Path $PSScriptRoot "Get-OpenClawVersion.ps1"
     $Version = & $versionScript -Variable SemVer
 }
+$packageIdentityVersion = if ($versionWasProvided) {
+    $Version
+}
+else {
+    $versionScript = Join-Path $PSScriptRoot "Get-OpenClawVersion.ps1"
+    & $versionScript -Variable AssemblySemFileVer -NoRestore
+}
 
 if (-not $Version) {
     throw "Could not determine a version. Pass -Version explicitly."
+}
+if (-not $packageIdentityVersion) {
+    throw "Could not determine a package identity version. Pass -Version explicitly."
 }
 
 $iscc = Resolve-InnoCompiler
@@ -205,7 +229,7 @@ foreach ($architecture in $architectures) {
     $rid = Get-RidForArch $architecture
     if (-not $NoPublish) {
         $publishVersion = if ($versionWasProvided) { $Version } else { $null }
-        Publish-ArchitecturePayload -Architecture $architecture -RuntimeIdentifier $rid -PublishVersion $publishVersion
+        Publish-ArchitecturePayload -Architecture $architecture -RuntimeIdentifier $rid -PublishVersion $publishVersion -PackageIdentityVersion $packageIdentityVersion
     }
 
     $payload = Assert-PayloadReady $architecture

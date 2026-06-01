@@ -9,7 +9,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet("SemVer", "MajorMinorPatch")]
+    [ValidateSet("SemVer", "MajorMinorPatch", "AssemblySemFileVer")]
     [string]$Variable = "SemVer",
 
     [switch]$NoRestore

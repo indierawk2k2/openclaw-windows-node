@@ -59,6 +59,35 @@ public sealed class InstallerIssAssertionTests
     }
 
     [Fact]
+    public void Installer_RegistersAndUnregistersPackageIdentity()
+    {
+        var root = GetRepositoryRoot();
+        var iss = File.ReadAllText(Path.Combine(root, "installer.iss"));
+        var helper = File.ReadAllText(Path.Combine(root, "scripts", "Manage-PackageIdentity.ps1"));
+
+        Assert.Contains(@"#define PackageIdentityFileName ""OpenClaw.PackageIdentity.msix""", iss);
+        Assert.Contains(@"#define PackageIdentityName ""OpenClaw.Companion""", iss);
+        Assert.Contains("FileExists(publish + \"\\\" + PackageIdentityFileName)", iss);
+        Assert.Contains(@"Source: ""scripts\Manage-PackageIdentity.ps1""; DestDir: ""{app}""; Flags: ignoreversion", iss);
+        Assert.Contains(@"-PackageName ' + AddQuotes('{#PackageIdentityName}')", iss);
+        Assert.Contains(@"-PackagePath ' + AddQuotes(ExpandConstant('{app}\{#PackageIdentityFileName}'))", iss);
+        Assert.Contains(@"-ExternalLocation ' + AddQuotes(ExpandConstant('{app}'))", iss);
+        Assert.Contains("CurStep = ssPostInstall", iss);
+        Assert.Contains("RegisterPackageIdentity", iss);
+        Assert.Contains("CurUninstallStep = usUninstall", iss);
+        Assert.Contains("UnregisterPackageIdentity", iss);
+        Assert.Contains("RaiseException('OpenClaw package identity registration failed", iss);
+
+        Assert.Contains("[ValidateSet(\"Register\", \"Unregister\")]", helper);
+        Assert.Contains("$minimumExternalLocationBuild = 19041", helper);
+        Assert.Contains("Add-AppxPackage", helper);
+        Assert.Contains("-ExternalLocation $ExternalLocation", helper);
+        Assert.Contains("-ForceUpdateFromAnyVersion", helper);
+        Assert.Contains("Get-AppxPackage -Name $PackageName", helper);
+        Assert.Contains("Remove-AppxPackage -Package $package.PackageFullName", helper);
+    }
+
+    [Fact]
     public void Installer_CreatesStartMenuEntrypointsForTraySetupAndSupport()
     {
         var iss = File.ReadAllText(Path.Combine(GetRepositoryRoot(), "installer.iss"));
@@ -150,6 +179,10 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"dotnet publish src/OpenClaw.SetupEngine.UI", ci);
         Assert.Contains(@"mkdir publish\SetupEngine", ci);
         Assert.Contains(@"copy publish-setup\* publish\SetupEngine\ -Recurse", ci);
+        Assert.Contains(@"Build Package Identity", ci);
+        Assert.Contains(@"assemblySemFileVer: ${{ steps.gitversion.outputs.assemblySemFileVer }}", ci);
+        Assert.Contains(@".\scripts\build-package-identity.ps1 -OutputPath publish\OpenClaw.PackageIdentity.msix", ci);
+        Assert.Contains(@"-Version ""${{ needs.test.outputs.assemblySemFileVer }}""", ci);
     }
 
     [Fact]

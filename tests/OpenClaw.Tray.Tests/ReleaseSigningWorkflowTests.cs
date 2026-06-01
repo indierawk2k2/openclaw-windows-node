@@ -21,12 +21,18 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.UI.exe", workflow);
         Assert.Contains("Sign x64 OpenClaw Executables", workflow);
         Assert.Contains("files-folder: signing-input-x64", workflow);
+        Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.PackageIdentity.msix -Target artifacts\tray-win-x64\OpenClaw.PackageIdentity.msix", workflow);
         Assert.Contains("Stage ARM64 OpenClaw Executables for Signing", workflow);
         Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe", workflow);
         Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.exe", workflow);
         Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe", workflow);
         Assert.Contains("Sign ARM64 OpenClaw Executables", workflow);
         Assert.Contains("files-folder: signing-input-arm64", workflow);
+        Assert.Contains(@"New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.PackageIdentity.msix -Target artifacts\tray-win-arm64\OpenClaw.PackageIdentity.msix", workflow);
+        Assert.Contains("Sign x64 Package Identity", workflow);
+        Assert.Contains("Sign ARM64 Package Identity", workflow);
+        Assert.Contains("files-folder-filter: msix", workflow);
+        Assert.Contains("Verify Package Identity Signing", workflow);
         Assert.Contains("files-folder-filter: exe", workflow);
         Assert.DoesNotContain("files-folder-recurse: true", workflow);
     }

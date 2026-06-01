@@ -277,6 +277,7 @@ jobs:
     outputs:
       semVer: ${{ steps.gitversion.outputs.semVer }}
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
+      assemblySemFileVer: ${{ steps.gitversion.outputs.assemblySemFileVer }}
 
   e2etests:
     needs: repo-hygiene
@@ -393,6 +394,10 @@ jobs:
         dotnet publish src/OpenClaw.SetupEngine.UI -c Release -r ${{ matrix.rid }} --self-contained -o publish-setup
         mkdir publish\SetupEngine
         copy publish-setup\* publish\SetupEngine\ -Recurse
+
+    - name: Build Package Identity
+      shell: pwsh
+      run: .\scripts\build-package-identity.ps1 -OutputPath publish\OpenClaw.PackageIdentity.msix -Version "${{ needs.test.outputs.assemblySemFileVer }}"
 
     - name: Verify x64 Native Runtime Payload
       if: matrix.rid == 'win-x64'
@@ -561,6 +566,7 @@ jobs:
         New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
         New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
         New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-x64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.PackageIdentity.msix -Target artifacts\tray-win-x64\OpenClaw.PackageIdentity.msix | Out-Null
 
     - name: Stage ARM64 OpenClaw Executables for Signing
       shell: pwsh
@@ -569,6 +575,7 @@ jobs:
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.exe | Out-Null
         New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.SetupEngine.UI.exe -Target artifacts\tray-win-arm64\SetupEngine\OpenClaw.SetupEngine.UI.exe | Out-Null
+        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.PackageIdentity.msix -Target artifacts\tray-win-arm64\OpenClaw.PackageIdentity.msix | Out-Null
 
     - name: Sign x64 OpenClaw Executables
       uses: azure/artifact-signing-action@v2
@@ -596,6 +603,32 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    - name: Sign x64 Package Identity
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-input-x64
+        files-folder-filter: msix
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Sign ARM64 Package Identity
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: https://eus.codesigning.azure.net/
+        signing-account-name: openclaw
+        certificate-profile-name: openclaw
+        files-folder: signing-input-arm64
+        files-folder-filter: msix
+        files-folder-depth: 1
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
     - name: Verify x64 Release Executable Signing Policy
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-x64 -RequireSignedOpenClaw
@@ -603,6 +636,20 @@ jobs:
     - name: Verify ARM64 Release Executable Signing Policy
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
+
+    - name: Verify Package Identity Signing
+      shell: pwsh
+      run: |
+        $packages = @(
+          "artifacts\tray-win-x64\OpenClaw.PackageIdentity.msix",
+          "artifacts\tray-win-arm64\OpenClaw.PackageIdentity.msix"
+        )
+        foreach ($package in $packages) {
+          $signature = Get-AuthenticodeSignature -LiteralPath $package
+          if ($signature.Status -ne "Valid") {
+            throw "$package Authenticode signature was $($signature.Status)."
+          }
+        }
 
     - name: Verify x64 Release Native Dependencies
       shell: pwsh

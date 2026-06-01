@@ -3,6 +3,8 @@
 #define MyAppPublisher "Scott Hanselman"
 #define MyAppURL "https://github.com/openclaw/openclaw-windows-node"
 #define MyAppExeName "OpenClaw.Tray.WinUI.exe"
+#define PackageIdentityFileName "OpenClaw.PackageIdentity.msix"
+#define PackageIdentityName "OpenClaw.Companion"
 
 ; MyAppArch should be passed via /DMyAppArch=x64 or /DMyAppArch=arm64
 #ifndef MyAppArch
@@ -62,6 +64,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
   #error SetupEngine.UI payload missing. Publish OpenClaw.SetupEngine.UI into {#publish}\SetupEngine before compiling the installer.
 #endif
 
+#if !FileExists(publish + "\" + PackageIdentityFileName)
+  #error Package identity payload missing. Build OpenClaw.PackageIdentity.msix into {#publish} before compiling the installer.
+#endif
+
 ; vcRedist should point at the architecture-matching Visual C++ Runtime
 ; redistributable in CI release builds.
 #ifndef vcRedist
@@ -77,6 +83,8 @@ Name: "startupicon"; Description: "Start OpenClaw Companion when Windows starts"
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 ; WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; Sparse package identity registration helper.
+Source: "scripts\Manage-PackageIdentity.ps1"; DestDir: "{app}"; Flags: ignoreversion
 #if vcRedist != ""
 Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: deleteafterinstall; AfterInstall: InstallVCRuntime
 #endif
@@ -147,6 +155,71 @@ begin
 #else
   Result := True;
 #endif
+end;
+
+function RunPackageIdentityScript(const Mode: string; var ResultCode: Integer): Boolean;
+var
+  ScriptPath: string;
+  Params: string;
+begin
+  ScriptPath := ExpandConstant('{app}\Manage-PackageIdentity.ps1');
+
+  if not FileExists(ScriptPath) then
+  begin
+    ResultCode := 2;
+    Log('Package identity helper script is missing: ' + ScriptPath);
+    Result := False;
+    Exit;
+  end;
+
+  Params :=
+    '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + AddQuotes(ScriptPath) +
+    ' -Mode ' + Mode +
+    ' -PackageName ' + AddQuotes('{#PackageIdentityName}') +
+    ' -PackagePath ' + AddQuotes(ExpandConstant('{app}\{#PackageIdentityFileName}')) +
+    ' -ExternalLocation ' + AddQuotes(ExpandConstant('{app}'));
+
+  Log('Running package identity ' + Mode + ' script.');
+  Result :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+
+  if Result then
+    Log('Package identity ' + Mode + ' script exited with code ' + IntToStr(ResultCode) + '.')
+  else
+    Log('Failed to start package identity ' + Mode + ' script. System error: ' + IntToStr(ResultCode) + '.');
+end;
+
+procedure RegisterPackageIdentity;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  Started := RunPackageIdentityScript('Register', ResultCode);
+  if Started and (ResultCode = 0) then
+    Exit;
+
+  if not Started then
+    ResultCode := 2;
+
+  RaiseException('OpenClaw package identity registration failed with exit code ' + IntToStr(ResultCode) + '.');
+end;
+
+procedure UnregisterPackageIdentity;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+begin
+  Started := RunPackageIdentityScript('Unregister', ResultCode);
+  if Started and (ResultCode = 0) then
+    Exit;
+
+  Log('Package identity unregistration did not complete successfully; continuing uninstall.');
 end;
 
 procedure EnsureLocalGatewayCleanupChoice;
@@ -278,10 +351,17 @@ begin
     Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
 end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterPackageIdentity;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    UnregisterPackageIdentity;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;
   end

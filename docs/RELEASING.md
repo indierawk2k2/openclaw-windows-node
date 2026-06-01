@@ -22,6 +22,8 @@ build/sign/publish release artifacts.
    Select-String .\.github\workflows\ci.yml -Pattern `
      "Verify Release Executable Signing Policy", `
      "OpenClaw.SetupEngine.exe", `
+     "Build Package Identity", `
+     "Sign x64 Package Identity", `
      "build-msix:", `
      "Paused for alpha"
    ```
@@ -72,9 +74,10 @@ For the current alpha flow, ship only:
 - Portable ZIP payload for Updatum:
   - `OpenClawTray-<version>-win-x64.zip`
 
-MSIX artifacts are intentionally paused for alpha while we focus on the Inno
-installer path and signed portable update payloads. Re-enable MSIX only when we
-explicitly want packaged camera/microphone consent validation again.
+Full MSIX app artifacts are intentionally paused for alpha while we focus on the
+Inno installer path and signed portable update payloads. The Inno payload still
+includes the small signed `OpenClaw.PackageIdentity.msix` used only to grant
+package identity to the external-location Win32 companion app.
 
 ## Executable signing policy
 
@@ -128,7 +131,35 @@ Do not add `AZURE_CLIENT_SECRET` back to the release workflow. The Entra app
 registration should have a federated credential for:
 `repo:openclaw/openclaw-windows-node:environment:release-signing`.
 
-## How CI signs payload executables
+## Package identity signing
+
+`OpenClaw.PackageIdentity.msix` must be signed with the same public trust
+certificate used for OpenClaw releases. The manifest `Identity Publisher` and
+the `<msix publisher="...">` value embedded in `OpenClaw.Tray.WinUI.exe` must
+exactly match the certificate subject listed above.
+
+The installer registers the identity per user with
+`Add-AppxPackage -ExternalLocation {app}` and removes it on uninstall with
+`Remove-AppxPackage`. CI uses GitVersion `AssemblySemFileVer` for the package
+version so alpha/pre-release identity updates get a monotonically increasing
+four-part MSIX version. Common registration failures:
+
+- `0x800B0109`: package signature is untrusted.
+- `0x80073D54`: EXE `<msix>` identity does not match the package manifest.
+- `0x80073CF9`: an incompatible package version is already registered.
+
+For local signed-payload testing on Windows 10 2004+ / Windows 11:
+
+```powershell
+.\scripts\Manage-PackageIdentity.ps1 -Mode Register `
+  -PackageName OpenClaw.Companion `
+  -PackagePath .\publish\OpenClaw.PackageIdentity.msix `
+  -ExternalLocation .\publish
+Get-AppxPackage -Name OpenClaw.Companion
+.\scripts\Manage-PackageIdentity.ps1 -Mode Unregister -PackageName OpenClaw.Companion
+```
+
+## How CI signs payload executables and identity
 
 The release workflow does not recursively sign every `.exe`. Instead it creates
 temporary signing input directories with hardlinks to only the OpenClaw-owned
@@ -139,6 +170,11 @@ signs the real payload file.
 After signing, CI verifies the actual payload directory, not the staging folder.
 If hardlink signing does not affect the payload, the verifier fails before
 release artifacts are created.
+
+CI also hardlinks `OpenClaw.PackageIdentity.msix` into the same architecture
+signing input directories and signs it with the `msix` filter. The signed MSIX
+remains inside the Inno payload and is not uploaded as a standalone release
+asset.
 
 ## Expected release workflow jobs
 
@@ -157,8 +193,8 @@ The release job should:
 
 1. Download x64/ARM64 tray payload artifacts.
 2. Authenticate to Azure with OIDC in the `release-signing` environment.
-3. Sign only the OpenClaw-owned EXEs in both payloads.
-4. Verify executable signing policy.
+3. Sign only the OpenClaw-owned EXEs and `OpenClaw.PackageIdentity.msix` in both payloads.
+4. Verify executable and package identity signing policy.
 5. Create the portable x64 ZIP.
 6. Build Inno installers.
 7. Sign installers.
@@ -179,8 +215,11 @@ Expected:
 - `isPrerelease` is `true`.
 - `isLatest` is `false` for alpha tags.
 - Installer EXEs are signed.
+- Installing on Windows 10 2004+ / Windows 11 registers `OpenClaw.Companion`,
+  and uninstalling removes it.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
+  - `OpenClaw.PackageIdentity.msix` is OpenClaw-signed.
   - `SetupEngine\OpenClaw.SetupEngine.exe` is OpenClaw-signed.
   - `SetupEngine\OpenClaw.SetupEngine.UI.exe` is OpenClaw-signed.
   - `wxc-exec.exe`, `createdump.exe`, and `RestartAgent.exe` are not
