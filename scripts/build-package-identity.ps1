@@ -279,6 +279,26 @@ if (-not $properties) {
 }
 Add-OrUpdateElementText -Document $doc -Parent $properties -Prefix "uap10" -LocalName "AllowExternalContent" -NamespaceUri $uap10Ns -Value "true"
 
+$resources = [System.Xml.XmlElement]$doc.SelectSingleNode("/appx:Package/appx:Resources", $ns)
+if (-not $resources) {
+    $resources = $doc.CreateElement("Resources", $foundationNs)
+    [void]$package.InsertAfter($resources, $properties)
+}
+$resourceLanguages = @($resources.ChildNodes |
+    Where-Object { $_.NodeType -eq [System.Xml.XmlNodeType]::Element -and $_.LocalName -eq "Resource" })
+if ($resourceLanguages.Count -eq 0) {
+    $resource = $doc.CreateElement("Resource", $foundationNs)
+    $resource.SetAttribute("Language", "en-US")
+    [void]$resources.AppendChild($resource)
+}
+else {
+    foreach ($resource in $resourceLanguages) {
+        if ($resource.GetAttribute("Language") -eq "x-generate") {
+            $resource.SetAttribute("Language", "en-US")
+        }
+    }
+}
+
 $targetDeviceFamily = [System.Xml.XmlElement]$doc.SelectSingleNode("/appx:Package/appx:Dependencies/appx:TargetDeviceFamily[@Name='Windows.Desktop']", $ns)
 if (-not $targetDeviceFamily) {
     throw "Package manifest is missing the Windows.Desktop TargetDeviceFamily."

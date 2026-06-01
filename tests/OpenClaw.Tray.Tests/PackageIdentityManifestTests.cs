@@ -56,6 +56,10 @@ public sealed class PackageIdentityManifestTests
             var targetDeviceFamily = stagedManifest
                 .Descendants(AppxNs + "TargetDeviceFamily")
                 .Single(element => (string?)element.Attribute("Name") == "Windows.Desktop");
+            var resourceLanguages = stagedManifest
+                .Descendants(AppxNs + "Resource")
+                .Select(element => (string)element.Attribute("Language")!)
+                .ToArray();
             var capabilityNames = stagedManifest
                 .Descendants(RescapNs + "Capability")
                 .Select(element => (string?)element.Attribute("Name"))
@@ -67,6 +71,7 @@ public sealed class PackageIdentityManifestTests
             Assert.Equal(
                 "true",
                 (string?)RequiredElement(properties, Uap10Ns + "AllowExternalContent"));
+            Assert.Equal(new[] { "en-US" }, resourceLanguages);
             Assert.True(
                 Version.Parse((string)targetDeviceFamily.Attribute("MinVersion")!) >= Version.Parse("10.0.19041.0"));
 
