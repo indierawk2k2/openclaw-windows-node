@@ -181,6 +181,18 @@ public sealed class PackageIdentityManifestTests
         Assert.Contains("No code-signing certificate with private key found", script);
     }
 
+    [Fact]
+    public void BuildInnoLocalScript_InvokesPackageIdentityWithNamedSplatting()
+    {
+        var root = GetRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(root, "scripts", "build-inno-local.ps1"));
+
+        Assert.Contains("$packageIdentityArgs = @{", script);
+        Assert.Contains("OutputPath = (Join-Path $publishDir \"OpenClaw.PackageIdentity.msix\")", script);
+        Assert.Contains("PayloadRoot = $publishDir", script);
+        Assert.Contains("& (Join-Path $PSScriptRoot \"build-package-identity.ps1\") @packageIdentityArgs", script);
+    }
+
     private static XElement RequiredElement(XContainer? container, XName name)
     {
         var element = container?.Element(name);

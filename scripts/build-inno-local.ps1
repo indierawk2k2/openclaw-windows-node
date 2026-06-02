@@ -196,14 +196,14 @@ function Publish-ArchitecturePayload {
     Copy-Item -Path (Join-Path $setupPublishDir "*") -Destination $setupDest -Recurse -Force
 
     Write-Step "Building $Architecture package identity"
-    $packageIdentityArgs = @(
-        "-OutputPath", (Join-Path $publishDir "OpenClaw.PackageIdentity.msix"),
-        "-Version", $PackageIdentityVersion,
-        "-PayloadRoot", $publishDir,
-        "-Sign"
-    )
+    $packageIdentityArgs = @{
+        OutputPath = (Join-Path $publishDir "OpenClaw.PackageIdentity.msix")
+        Version = $PackageIdentityVersion
+        PayloadRoot = $publishDir
+        Sign = $true
+    }
     if ($PackageIdentitySigningThumbprint) {
-        $packageIdentityArgs += @("-CertificateThumbprint", $PackageIdentitySigningThumbprint)
+        $packageIdentityArgs["CertificateThumbprint"] = $PackageIdentitySigningThumbprint
     }
     & (Join-Path $PSScriptRoot "build-package-identity.ps1") @packageIdentityArgs
     if ($LASTEXITCODE -ne 0) {
