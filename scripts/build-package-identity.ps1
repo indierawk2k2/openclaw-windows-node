@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     Stages a package-with-external-location manifest from the WinUI package
-    manifest and packs it into a small MSIX. Release signing happens in CI with
-    the same Azure Artifact Signing identity as the app executables.
+    manifest and packs it into a small MSIX. CI signs the release package with
+    Azure Artifact Signing; local installer builds can pass -Sign to sign with
+    an OpenClaw code-signing certificate from the Windows certificate store.
 #>
 
 [CmdletBinding()]
@@ -19,6 +20,14 @@ param(
     [string]$StagingRoot,
 
     [string]$MakeAppxPath,
+
+    [string]$SignToolPath,
+
+    [string]$CertificateThumbprint = $env:OPENCLAW_PACKAGE_IDENTITY_SIGNING_THUMBPRINT,
+
+    [string]$TimestampUrl = "http://timestamp.acs.microsoft.com",
+
+    [switch]$Sign,
 
     [switch]$SkipPack
 )
@@ -98,6 +107,110 @@ function Resolve-WindowsSdkTool {
     }
 
     throw "$ToolName was not found. Install the Windows SDK or add it to PATH."
+}
+
+function Resolve-CodeSigningCertificate {
+    param(
+        [Parameter(Mandatory = $true)][string]$PublisherSubject,
+        [string]$Thumbprint
+    )
+
+    $normalizedThumbprint = if ($Thumbprint) { $Thumbprint -replace '\s', '' } else { "" }
+    $stores = @(
+        @{ Path = "Cert:\CurrentUser\My"; UseMachineStore = $false },
+        @{ Path = "Cert:\LocalMachine\My"; UseMachineStore = $true }
+    )
+
+    $matches = foreach ($store in $stores) {
+        Get-ChildItem -Path $store.Path -CodeSigningCert -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.HasPrivateKey -and
+                $_.NotAfter -gt (Get-Date) -and
+                (
+                    ($normalizedThumbprint -and $_.Thumbprint -eq $normalizedThumbprint) -or
+                    (-not $normalizedThumbprint -and $_.Subject -eq $PublisherSubject)
+                )
+            } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    Certificate = $_
+                    UseMachineStore = $store.UseMachineStore
+                }
+            }
+    }
+
+    $selected = $matches | Sort-Object { $_.Certificate.NotAfter } -Descending | Select-Object -First 1
+    if (-not $selected) {
+        $selector = if ($normalizedThumbprint) {
+            "thumbprint $normalizedThumbprint"
+        }
+        else {
+            "subject '$PublisherSubject'"
+        }
+        throw "No code-signing certificate with private key found for $selector in CurrentUser\My or LocalMachine\My."
+    }
+
+    return $selected
+}
+
+function Test-AppxSignatureFile {
+    param([Parameter(Mandatory = $true)][string]$PackagePath)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        return [bool]($archive.Entries | Where-Object { $_.FullName -eq "AppxSignature.p7x" } | Select-Object -First 1)
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function Assert-PackageIsSigned {
+    param([Parameter(Mandatory = $true)][string]$PackagePath)
+
+    if (-not (Test-AppxSignatureFile -PackagePath $PackagePath)) {
+        throw "$PackagePath does not contain AppxSignature.p7x."
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
+    if ($signature.Status -eq "NotSigned" -or -not $signature.SignerCertificate) {
+        throw "$PackagePath is not Authenticode signed."
+    }
+
+    if ($signature.Status -ne "Valid") {
+        Write-Warning "$PackagePath Authenticode status is $($signature.Status). The package is signed, but trust validation depends on the target machine certificate stores."
+    }
+}
+
+function Invoke-PackageSigning {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackagePath,
+        [Parameter(Mandatory = $true)][string]$PublisherSubject
+    )
+
+    if (-not $SignToolPath) {
+        $SignToolPath = Resolve-WindowsSdkTool -ToolName "signtool.exe"
+    }
+
+    $cert = Resolve-CodeSigningCertificate -PublisherSubject $PublisherSubject -Thumbprint $CertificateThumbprint
+    $args = @("sign")
+    if ($cert.UseMachineStore) {
+        $args += "/sm"
+    }
+    $args += @("/sha1", $cert.Certificate.Thumbprint, "/fd", "SHA256")
+    if ($TimestampUrl) {
+        $args += @("/tr", $TimestampUrl, "/td", "SHA256")
+    }
+    $args += $PackagePath
+
+    & $SignToolPath @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool failed with exit code $LASTEXITCODE."
+    }
+
+    Assert-PackageIsSigned -PackagePath $PackagePath
+    Write-Host "Signed package identity MSIX with $($cert.Certificate.Subject): $PackagePath"
 }
 
 function Ensure-NamespaceDeclaration {
@@ -371,3 +484,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Built package identity MSIX: $outputFullPath"
+if ($Sign) {
+    Invoke-PackageSigning -PackagePath $outputFullPath -PublisherSubject $identity.GetAttribute("Publisher")
+}

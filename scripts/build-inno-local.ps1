@@ -29,7 +29,9 @@ param(
 
     [switch]$Fast,
 
-    [switch]$InstallInno
+    [switch]$InstallInno,
+
+    [string]$PackageIdentitySigningThumbprint = $env:OPENCLAW_PACKAGE_IDENTITY_SIGNING_THUMBPRINT
 )
 
 Set-StrictMode -Version Latest
@@ -81,6 +83,36 @@ function Get-RidForArch {
     return "win-x64"
 }
 
+function Test-AppxSignatureFile {
+    param([Parameter(Mandatory = $true)][string]$PackagePath)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        return [bool]($archive.Entries | Where-Object { $_.FullName -eq "AppxSignature.p7x" } | Select-Object -First 1)
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
+function Assert-SignedPackageIdentity {
+    param([Parameter(Mandatory = $true)][string]$PackagePath)
+
+    if (-not (Test-AppxSignatureFile -PackagePath $PackagePath)) {
+        throw "Package identity MSIX is missing AppxSignature.p7x: $PackagePath"
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
+    if ($signature.Status -eq "NotSigned" -or -not $signature.SignerCertificate) {
+        throw "Package identity MSIX is not signed: $PackagePath"
+    }
+
+    if ($signature.Status -ne "Valid") {
+        Write-Warning "Package identity MSIX Authenticode status is $($signature.Status). The installer can still be built, but target machines must trust the signer certificate."
+    }
+}
+
 function Publish-ArchitecturePayload {
     param(
         [string]$Architecture,
@@ -102,7 +134,8 @@ function Publish-ArchitecturePayload {
         "-r", $RuntimeIdentifier,
         "--self-contained",
         "-o", $publishDir,
-        "-v:minimal"
+        "-v:minimal",
+        "-nr:false"
     )
     if ($PublishVersion) {
         $trayPublishArgs += "-p:Version=$PublishVersion"
@@ -119,7 +152,8 @@ function Publish-ArchitecturePayload {
         "-r", $RuntimeIdentifier,
         "--self-contained",
         "-o", $setupPublishDir,
-        "-v:minimal"
+        "-v:minimal",
+        "-nr:false"
     )
     if ($PublishVersion) {
         $setupPublishArgs += "-p:Version=$PublishVersion"
@@ -135,9 +169,15 @@ function Publish-ArchitecturePayload {
     Copy-Item -Path (Join-Path $setupPublishDir "*") -Destination $setupDest -Recurse -Force
 
     Write-Step "Building $Architecture package identity"
-    & (Join-Path $PSScriptRoot "build-package-identity.ps1") `
-        -OutputPath (Join-Path $publishDir "OpenClaw.PackageIdentity.msix") `
-        -Version $PackageIdentityVersion
+    $packageIdentityArgs = @(
+        "-OutputPath", (Join-Path $publishDir "OpenClaw.PackageIdentity.msix"),
+        "-Version", $PackageIdentityVersion,
+        "-Sign"
+    )
+    if ($PackageIdentitySigningThumbprint) {
+        $packageIdentityArgs += @("-CertificateThumbprint", $PackageIdentitySigningThumbprint)
+    }
+    & (Join-Path $PSScriptRoot "build-package-identity.ps1") @packageIdentityArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Package identity build failed for $Architecture."
     }
@@ -170,6 +210,7 @@ function Assert-PayloadReady {
     if (-not (Test-Path -LiteralPath $identityPackage)) {
         throw "Missing package identity payload at $identityPackage. Rerun without -NoPublish."
     }
+    Assert-SignedPackageIdentity -PackagePath $identityPackage
 
     return $publishDir
 }
@@ -232,6 +273,7 @@ Write-Host "Version: $Version"
 Write-Host "Configuration: $Configuration"
 Write-Host "Fast compression: $($Fast.IsPresent)"
 Write-Host "No publish: $($NoPublish.IsPresent)"
+Write-Host "Package identity signing: required"
 
 foreach ($architecture in $architectures) {
     $rid = Get-RidForArch $architecture

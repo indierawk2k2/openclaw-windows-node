@@ -151,13 +151,19 @@ four-part MSIX version. Common registration failures:
 For local signed-payload testing on Windows 10 2004+ / Windows 11:
 
 ```powershell
+.\scripts\build-inno-local.ps1 -Arch x64 -Fast
 .\scripts\Manage-PackageIdentity.ps1 -Mode Register `
   -PackageName OpenClaw.Companion `
-  -PackagePath .\publish\OpenClaw.PackageIdentity.msix `
-  -ExternalLocation .\publish
+  -PackagePath .\publish-local-x64\OpenClaw.PackageIdentity.msix `
+  -ExternalLocation .\publish-local-x64
 Get-AppxPackage -Name OpenClaw.Companion
 .\scripts\Manage-PackageIdentity.ps1 -Mode Unregister -PackageName OpenClaw.Companion
 ```
+
+`build-inno-local.ps1` signs the inner identity MSIX before compiling Inno.
+Install the OpenClaw code-signing certificate with a private key into
+`CurrentUser\My` or `LocalMachine\My`; if more than one matching certificate is
+present, set `OPENCLAW_PACKAGE_IDENTITY_SIGNING_THUMBPRINT`.
 
 ## How CI signs payload executables and identity
 

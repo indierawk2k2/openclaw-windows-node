@@ -195,6 +195,11 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains(@"publish\OpenClaw.Tray.WinUI.pri", ci);
         Assert.Contains(@"Windows\TrayMenuWindow.xbf", buildInnoLocal);
         Assert.Contains(@"OpenClaw.Tray.WinUI.pri", buildInnoLocal);
+        Assert.Contains("-Sign", buildInnoLocal);
+        Assert.Contains("Assert-SignedPackageIdentity", buildInnoLocal);
+        Assert.Contains("AppxSignature.p7x", buildInnoLocal);
+        Assert.Contains("Get-AuthenticodeSignature", buildInnoLocal);
+        Assert.Contains("Package identity signing: required", buildInnoLocal);
     }
 
     [Fact]

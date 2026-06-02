@@ -106,6 +106,20 @@ public sealed class PackageIdentityManifestTests
         Assert.DoesNotContain(setupManifest.Root!.Descendants(), element => element.Name == MsixNs + "msix");
     }
 
+    [Fact]
+    public void BuildPackageIdentityScript_CanSignSparsePackage()
+    {
+        var root = GetRepositoryRoot();
+        var script = File.ReadAllText(Path.Combine(root, "scripts", "build-package-identity.ps1"));
+
+        Assert.Contains("[switch]$Sign", script);
+        Assert.Contains("signtool.exe", script);
+        Assert.Contains("OPENCLAW_PACKAGE_IDENTITY_SIGNING_THUMBPRINT", script);
+        Assert.Contains("AppxSignature.p7x", script);
+        Assert.Contains("Get-AuthenticodeSignature", script);
+        Assert.Contains("No code-signing certificate with private key found", script);
+    }
+
     private static XElement RequiredElement(XContainer? container, XName name)
     {
         var element = container?.Element(name);
