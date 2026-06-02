@@ -37,12 +37,14 @@ public sealed class PackageIdentityManifestTests
     {
         var root = GetRepositoryRoot();
         var stagingRoot = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"));
+        var outputPath = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"), "OpenClaw.PackageIdentity.msix");
 
         try
         {
             RunPowerShellScript(
                 Path.Combine(root, "scripts", "build-package-identity.ps1"),
                 "-StagingRoot", stagingRoot,
+                "-OutputPath", outputPath,
                 "-Version", "1.2.3",
                 "-SkipPack");
 
@@ -94,6 +96,65 @@ public sealed class PackageIdentityManifestTests
             if (Directory.Exists(stagingRoot))
                 Directory.Delete(stagingRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public void BuildPackageIdentityScript_StagesPayloadResourceIndexes()
+    {
+        var root = GetRepositoryRoot();
+        var stagingRoot = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"));
+        var payloadRoot = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(payloadRoot);
+            File.WriteAllText(Path.Combine(payloadRoot, "OpenClaw.Tray.WinUI.pri"), "app pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.UI.Xaml.Controls.pri"), "winui controls pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.WindowsAppRuntime.pri"), "windows app runtime pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "WinUIEx.pri"), "winuiex pri");
+
+            RunPowerShellScript(
+                Path.Combine(root, "scripts", "build-package-identity.ps1"),
+                "-StagingRoot", stagingRoot,
+                "-PayloadRoot", payloadRoot,
+                "-Version", "1.2.3",
+                "-SkipPack");
+
+            Assert.True(File.Exists(Path.Combine(stagingRoot, "resources.pri")));
+            Assert.True(File.Exists(Path.Combine(stagingRoot, "Microsoft.UI.Xaml.Controls.pri")));
+            Assert.True(File.Exists(Path.Combine(stagingRoot, "Microsoft.WindowsAppRuntime.pri")));
+            Assert.True(File.Exists(Path.Combine(stagingRoot, "WinUIEx.pri")));
+            Assert.False(File.Exists(Path.Combine(stagingRoot, "OpenClaw.Tray.WinUI.pri")));
+        }
+        finally
+        {
+            if (Directory.Exists(stagingRoot))
+                Directory.Delete(stagingRoot, recursive: true);
+            if (Directory.Exists(payloadRoot))
+                Directory.Delete(payloadRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WinUiProject_CopiesReferenceSiblingPriFilesToPublish()
+    {
+        var root = GetRepositoryRoot();
+        var project = XDocument.Load(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+
+        var target = project.Root!
+            .Elements("Target")
+            .Single(element => (string?)element.Attribute("Name") == "CopyGeneratedWinUiArtifactsToPublish");
+
+        Assert.Contains(
+            target.Descendants()
+                .Attributes("Include")
+                .Select(attribute => attribute.Value),
+            value => value.Contains("ReferenceCopyLocalPaths", StringComparison.Ordinal) &&
+                     value.EndsWith(".pri", StringComparison.Ordinal));
+        Assert.Contains(
+            target.Descendants("Copy"),
+            element => ((string?)element.Attribute("SourceFiles"))?.Contains("_ReferenceSiblingPriFiles", StringComparison.Ordinal) == true &&
+                       ((string?)element.Attribute("DestinationFiles"))?.Contains("$(PublishDir)", StringComparison.Ordinal) == true);
     }
 
     [Fact]

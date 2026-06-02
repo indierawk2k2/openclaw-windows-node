@@ -240,9 +240,14 @@
     <ItemGroup>
       <_GeneratedWinUiPublishArtifacts Include="$(OpenClawTrayGeneratedOutputDirectory)**\*.xbf" Exclude="$(OpenClawTrayGeneratedOutputDirectory)publish\**\*" />
       <_GeneratedWinUiPublishArtifacts Include="$(OpenClawTrayGeneratedOutputDirectory)**\*.pri" Exclude="$(OpenClawTrayGeneratedOutputDirectory)publish\**\*" />
+      <_ReferenceSiblingPriFiles Include="%(ReferenceCopyLocalPaths.RootDir)%(ReferenceCopyLocalPaths.Directory)%(ReferenceCopyLocalPaths.Filename).pri"
+                                Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.dll' And Exists('%(ReferenceCopyLocalPaths.RootDir)%(ReferenceCopyLocalPaths.Directory)%(ReferenceCopyLocalPaths.Filename).pri')" />
     </ItemGroup>
     <Copy SourceFiles="@(_GeneratedWinUiPublishArtifacts)"
           DestinationFiles="@(_GeneratedWinUiPublishArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_ReferenceSiblingPriFiles)"
+          DestinationFiles="@(_ReferenceSiblingPriFiles->'$(PublishDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 

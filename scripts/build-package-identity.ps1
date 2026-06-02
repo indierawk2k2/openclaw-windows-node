@@ -17,6 +17,8 @@ param(
 
     [string]$Version,
 
+    [string]$PayloadRoot,
+
     [string]$StagingRoot,
 
     [string]$MakeAppxPath,
@@ -341,6 +343,55 @@ function Copy-ManifestAsset {
     }
 }
 
+function Copy-PayloadResourceIndexes {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceRoot,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot
+    )
+
+    $sourceFullPath = Resolve-FromRepositoryRoot -Path $SourceRoot
+    if (-not (Test-Path -LiteralPath $sourceFullPath)) {
+        throw "Package identity payload root not found: $SourceRoot"
+    }
+
+    $priFiles = @(Get-ChildItem -LiteralPath $sourceFullPath -File -Filter "*.pri" -ErrorAction SilentlyContinue)
+    if ($priFiles.Count -eq 0) {
+        throw "Package identity payload root does not contain root PRI resource maps: $sourceFullPath"
+    }
+
+    $copied = New-Object System.Collections.Generic.List[string]
+    $hasResourcesPri = $false
+    foreach ($priFile in $priFiles) {
+        if ($priFile.Name -ieq "OpenClaw.Tray.WinUI.pri") {
+            continue
+        }
+
+        Copy-Item -LiteralPath $priFile.FullName -Destination (Join-Path $DestinationRoot $priFile.Name) -Force
+        [void]$copied.Add($priFile.Name)
+        if ($priFile.Name -ieq "resources.pri") {
+            $hasResourcesPri = $true
+        }
+    }
+
+    if (-not $hasResourcesPri) {
+        $appPri = $priFiles | Where-Object { $_.Name -ieq "OpenClaw.Tray.WinUI.pri" } | Select-Object -First 1
+        if (-not $appPri) {
+            throw "Package identity payload root must contain resources.pri or OpenClaw.Tray.WinUI.pri: $sourceFullPath"
+        }
+
+        Copy-Item -LiteralPath $appPri.FullName -Destination (Join-Path $DestinationRoot "resources.pri") -Force
+        [void]$copied.Add("resources.pri")
+    }
+
+    foreach ($requiredEntry in @("resources.pri", "Microsoft.UI.Xaml.Controls.pri", "Microsoft.WindowsAppRuntime.pri")) {
+        if (-not (Test-Path -LiteralPath (Join-Path $DestinationRoot $requiredEntry))) {
+            throw "Package identity payload root did not provide required resource map: $requiredEntry"
+        }
+    }
+
+    Write-Host "Staged package identity resource maps: $(($copied | Sort-Object -Unique) -join ', ')"
+}
+
 $manifestFullPath = Resolve-FromRepositoryRoot -Path $ManifestPath
 if (-not (Test-Path -LiteralPath $manifestFullPath)) {
     throw "Package manifest not found: $ManifestPath"
@@ -356,6 +407,12 @@ $manifestPathResolved = (Resolve-Path -LiteralPath $manifestFullPath).Path
 $sourceManifestDir = Split-Path -Parent $manifestPathResolved
 $outputFullPath = Resolve-FromRepositoryRoot -Path $OutputPath
 $stagingFullPath = Resolve-FromRepositoryRoot -Path $StagingRoot
+if (-not $PayloadRoot) {
+    $payloadRootCandidate = Split-Path -Parent $outputFullPath
+    if (Test-Path -LiteralPath $payloadRootCandidate) {
+        $PayloadRoot = $payloadRootCandidate
+    }
+}
 
 Remove-Item -LiteralPath $stagingFullPath -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $stagingFullPath | Out-Null
@@ -461,6 +518,13 @@ $assetPaths = $assetPaths | Sort-Object -Unique
 
 foreach ($assetPath in $assetPaths) {
     Copy-ManifestAsset -RelativePath $assetPath -SourceRoot $sourceManifestDir -DestinationRoot $stagingFullPath
+}
+
+if ($PayloadRoot) {
+    Copy-PayloadResourceIndexes -SourceRoot $PayloadRoot -DestinationRoot $stagingFullPath
+}
+else {
+    Write-Warning "No payload root was provided; package identity resource maps were not staged."
 }
 
 $stagedManifestPath = Join-Path $stagingFullPath "AppxManifest.xml"

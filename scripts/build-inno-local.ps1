@@ -96,6 +96,22 @@ function Test-AppxSignatureFile {
     }
 }
 
+function Test-AppxArchiveEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackagePath,
+        [Parameter(Mandatory = $true)][string]$EntryName
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        return [bool]($archive.Entries | Where-Object { $_.FullName -eq $EntryName } | Select-Object -First 1)
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
 function Assert-SignedPackageIdentity {
     param([Parameter(Mandatory = $true)][string]$PackagePath)
 
@@ -110,6 +126,17 @@ function Assert-SignedPackageIdentity {
 
     if ($signature.Status -ne "Valid") {
         Write-Warning "Package identity MSIX Authenticode status is $($signature.Status). The installer can still be built, but target machines must trust the signer certificate."
+    }
+
+    foreach ($entryName in @(
+        "resources.pri",
+        "Microsoft.UI.Xaml.Controls.pri",
+        "Microsoft.WindowsAppRuntime.pri",
+        "WinUIEx.pri"
+    )) {
+        if (-not (Test-AppxArchiveEntry -PackagePath $PackagePath -EntryName $entryName)) {
+            throw "Package identity MSIX is missing required resource map ${entryName}: $PackagePath"
+        }
     }
 }
 
@@ -172,6 +199,7 @@ function Publish-ArchitecturePayload {
     $packageIdentityArgs = @(
         "-OutputPath", (Join-Path $publishDir "OpenClaw.PackageIdentity.msix"),
         "-Version", $PackageIdentityVersion,
+        "-PayloadRoot", $publishDir,
         "-Sign"
     )
     if ($PackageIdentitySigningThumbprint) {
