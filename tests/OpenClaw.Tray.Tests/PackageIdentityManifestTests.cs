@@ -76,6 +76,9 @@ public sealed class PackageIdentityManifestTests
             Assert.Equal(new[] { "en-US" }, resourceLanguages);
             Assert.True(
                 Version.Parse((string)targetDeviceFamily.Attribute("MinVersion")!) >= Version.Parse("10.0.19041.0"));
+            Assert.DoesNotContain(
+                stagedManifest.Descendants(AppxNs + "PackageDependency"),
+                element => ((string?)element.Attribute("Name"))?.StartsWith("Microsoft.WindowsAppRuntime", StringComparison.Ordinal) == true);
 
             Assert.Equal("OpenClaw.Tray.WinUI.exe", (string?)application.Attribute("Executable"));
             Assert.Equal("mediumIL", (string?)application.Attribute(Uap10Ns + "TrustLevel"));
@@ -108,7 +111,7 @@ public sealed class PackageIdentityManifestTests
         try
         {
             Directory.CreateDirectory(payloadRoot);
-            File.WriteAllText(Path.Combine(payloadRoot, "OpenClaw.Tray.WinUI.pri"), "app pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "resources.pri"), "package pri");
             File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.UI.Xaml.Controls.pri"), "winui controls pri");
             File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.WindowsAppRuntime.pri"), "windows app runtime pri");
             File.WriteAllText(Path.Combine(payloadRoot, "WinUIEx.pri"), "winuiex pri");
@@ -125,6 +128,37 @@ public sealed class PackageIdentityManifestTests
             Assert.True(File.Exists(Path.Combine(stagingRoot, "Microsoft.WindowsAppRuntime.pri")));
             Assert.True(File.Exists(Path.Combine(stagingRoot, "WinUIEx.pri")));
             Assert.False(File.Exists(Path.Combine(stagingRoot, "OpenClaw.Tray.WinUI.pri")));
+        }
+        finally
+        {
+            if (Directory.Exists(stagingRoot))
+                Directory.Delete(stagingRoot, recursive: true);
+            if (Directory.Exists(payloadRoot))
+                Directory.Delete(payloadRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void BuildPackageIdentityScript_DoesNotRenameAppPriAsPackageResources()
+    {
+        var root = GetRepositoryRoot();
+        var stagingRoot = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"));
+        var payloadRoot = Path.Combine(Path.GetTempPath(), "OpenClawPackageIdentityTests", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            Directory.CreateDirectory(payloadRoot);
+            File.WriteAllText(Path.Combine(payloadRoot, "OpenClaw.Tray.WinUI.pri"), "app pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.UI.Xaml.Controls.pri"), "winui controls pri");
+            File.WriteAllText(Path.Combine(payloadRoot, "Microsoft.WindowsAppRuntime.pri"), "windows app runtime pri");
+
+            RunPowerShellScriptExpectFailure(
+                "Package identity payload root must contain",
+                Path.Combine(root, "scripts", "build-package-identity.ps1"),
+                "-StagingRoot", stagingRoot,
+                "-PayloadRoot", payloadRoot,
+                "-Version", "1.2.3",
+                "-SkipPack");
         }
         finally
         {
@@ -179,6 +213,8 @@ public sealed class PackageIdentityManifestTests
         Assert.Contains("AppxSignature.p7x", script);
         Assert.Contains("Get-AuthenticodeSignature", script);
         Assert.Contains("No code-signing certificate with private key found", script);
+        Assert.Contains("makepri.exe", script);
+        Assert.Contains("Staged external-location package resource map", script);
     }
 
     [Fact]
@@ -190,6 +226,7 @@ public sealed class PackageIdentityManifestTests
         Assert.Contains("$packageIdentityArgs = @{", script);
         Assert.Contains("OutputPath = (Join-Path $publishDir \"OpenClaw.PackageIdentity.msix\")", script);
         Assert.Contains("PayloadRoot = $publishDir", script);
+        Assert.Contains("resources.pri", script);
         Assert.Contains("& (Join-Path $PSScriptRoot \"build-package-identity.ps1\") @packageIdentityArgs", script);
     }
 
@@ -201,6 +238,29 @@ public sealed class PackageIdentityManifestTests
     }
 
     private static void RunPowerShellScript(string scriptPath, params string[] arguments)
+    {
+        var result = RunPowerShellScriptRaw(scriptPath, arguments);
+        Assert.True(
+            result.Exited,
+            $"Timed out while running {Path.GetFileName(scriptPath)}. Stdout: {result.Stdout}. Stderr: {result.Stderr}");
+        Assert.True(
+            result.ExitCode == 0,
+            $"{Path.GetFileName(scriptPath)} exited with {result.ExitCode}. Stdout: {result.Stdout}. Stderr: {result.Stderr}");
+    }
+
+    private static void RunPowerShellScriptExpectFailure(string expectedOutput, string scriptPath, params string[] arguments)
+    {
+        var result = RunPowerShellScriptRaw(scriptPath, arguments);
+        Assert.True(
+            result.Exited,
+            $"Timed out while running {Path.GetFileName(scriptPath)}. Stdout: {result.Stdout}. Stderr: {result.Stderr}");
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains(expectedOutput, result.Stdout + result.Stderr, StringComparison.Ordinal);
+    }
+
+    private static (bool Exited, int ExitCode, string Stdout, string Stderr) RunPowerShellScriptRaw(
+        string scriptPath,
+        params string[] arguments)
     {
         using var process = new Process();
         process.StartInfo.FileName = ResolvePowerShell();
@@ -220,12 +280,8 @@ public sealed class PackageIdentityManifestTests
         process.Start();
         var stdout = process.StandardOutput.ReadToEnd();
         var stderr = process.StandardError.ReadToEnd();
-        Assert.True(
-            process.WaitForExit(TimeSpan.FromSeconds(30)),
-            $"Timed out while running {Path.GetFileName(scriptPath)}. Stdout: {stdout}. Stderr: {stderr}");
-        Assert.True(
-            process.ExitCode == 0,
-            $"{Path.GetFileName(scriptPath)} exited with {process.ExitCode}. Stdout: {stdout}. Stderr: {stderr}");
+        var exited = process.WaitForExit(TimeSpan.FromSeconds(30));
+        return (exited, exited ? process.ExitCode : int.MinValue, stdout, stderr);
     }
 
     private static string ResolvePowerShell()

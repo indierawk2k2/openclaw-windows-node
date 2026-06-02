@@ -23,6 +23,8 @@ param(
 
     [string]$MakeAppxPath,
 
+    [string]$MakePriPath,
+
     [string]$SignToolPath,
 
     [string]$CertificateThumbprint = $env:OPENCLAW_PACKAGE_IDENTITY_SIGNING_THUMBPRINT,
@@ -343,10 +345,83 @@ function Copy-ManifestAsset {
     }
 }
 
+function Resolve-PayloadRuntimeIdentifier {
+    param([Parameter(Mandatory = $true)][string]$SourceRoot)
+
+    $depsPath = Join-Path $SourceRoot "OpenClaw.Tray.WinUI.deps.json"
+    if (-not (Test-Path -LiteralPath $depsPath)) {
+        return $null
+    }
+
+    $deps = Get-Content -LiteralPath $depsPath -Raw | ConvertFrom-Json
+    $runtimeTargetName = if ($deps.runtimeTarget) { [string]$deps.runtimeTarget.name } else { "" }
+    if ($runtimeTargetName -match '/(?<rid>win-(x64|arm64))$') {
+        return $Matches.rid
+    }
+
+    throw "Could not determine RuntimeIdentifier from $depsPath."
+}
+
+function Resolve-PriConfigPath {
+    param([Parameter(Mandatory = $true)][string]$RuntimeIdentifier)
+
+    $objRoot = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\obj"
+    if (-not (Test-Path -LiteralPath $objRoot)) {
+        return $null
+    }
+
+    Get-ChildItem -LiteralPath $objRoot -Recurse -File -Filter "priconfig.xml" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like "*\$RuntimeIdentifier\priconfig.xml" } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+}
+
+function New-PackageResourceIndex {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourceRoot,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot,
+        [Parameter(Mandatory = $true)][string]$StagedManifestPath
+    )
+
+    $runtimeIdentifier = Resolve-PayloadRuntimeIdentifier -SourceRoot $SourceRoot
+    if (-not $runtimeIdentifier) {
+        return $false
+    }
+
+    $priConfig = Resolve-PriConfigPath -RuntimeIdentifier $runtimeIdentifier
+    if (-not $priConfig) {
+        return $false
+    }
+
+    $resolvedMakePriPath = $MakePriPath
+    if (-not $resolvedMakePriPath) {
+        $resolvedMakePriPath = Resolve-WindowsSdkTool -ToolName "makepri.exe"
+    }
+
+    $projectRoot = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI"
+    $resourcesPri = Join-Path $DestinationRoot "resources.pri"
+    Remove-Item -LiteralPath $resourcesPri -Force -ErrorAction SilentlyContinue
+
+    Push-Location $projectRoot
+    try {
+        & $resolvedMakePriPath new /pr $projectRoot /cf $priConfig.FullName /mn $StagedManifestPath /of $resourcesPri /o
+        if ($LASTEXITCODE -ne 0) {
+            throw "makepri failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    Write-Host "Generated package identity resource map from $($priConfig.FullName): resources.pri"
+    return $true
+}
+
 function Copy-PayloadResourceIndexes {
     param(
         [Parameter(Mandatory = $true)][string]$SourceRoot,
-        [Parameter(Mandatory = $true)][string]$DestinationRoot
+        [Parameter(Mandatory = $true)][string]$DestinationRoot,
+        [Parameter(Mandatory = $true)][string]$StagedManifestPath
     )
 
     $sourceFullPath = Resolve-FromRepositoryRoot -Path $SourceRoot
@@ -360,26 +435,22 @@ function Copy-PayloadResourceIndexes {
     }
 
     $copied = New-Object System.Collections.Generic.List[string]
-    $hasResourcesPri = $false
     foreach ($priFile in $priFiles) {
-        if ($priFile.Name -ieq "OpenClaw.Tray.WinUI.pri") {
+        if ($priFile.Name -ieq "OpenClaw.Tray.WinUI.pri" -or $priFile.Name -ieq "resources.pri") {
             continue
         }
 
         Copy-Item -LiteralPath $priFile.FullName -Destination (Join-Path $DestinationRoot $priFile.Name) -Force
         [void]$copied.Add($priFile.Name)
-        if ($priFile.Name -ieq "resources.pri") {
-            $hasResourcesPri = $true
-        }
     }
 
-    if (-not $hasResourcesPri) {
-        $appPri = $priFiles | Where-Object { $_.Name -ieq "OpenClaw.Tray.WinUI.pri" } | Select-Object -First 1
-        if (-not $appPri) {
-            throw "Package identity payload root must contain resources.pri or OpenClaw.Tray.WinUI.pri: $sourceFullPath"
+    if (-not (New-PackageResourceIndex -SourceRoot $sourceFullPath -DestinationRoot $DestinationRoot -StagedManifestPath $StagedManifestPath)) {
+        $resourcesPri = $priFiles | Where-Object { $_.Name -ieq "resources.pri" } | Select-Object -First 1
+        if (-not $resourcesPri) {
+            throw "Package identity payload root must contain generated resources.pri or OpenClaw.Tray.WinUI.deps.json plus MSBuild PRI metadata: $sourceFullPath"
         }
 
-        Copy-Item -LiteralPath $appPri.FullName -Destination (Join-Path $DestinationRoot "resources.pri") -Force
+        Copy-Item -LiteralPath $resourcesPri.FullName -Destination (Join-Path $DestinationRoot "resources.pri") -Force
         [void]$copied.Add("resources.pri")
     }
 
@@ -389,7 +460,9 @@ function Copy-PayloadResourceIndexes {
         }
     }
 
+    Copy-Item -LiteralPath (Join-Path $DestinationRoot "resources.pri") -Destination (Join-Path $sourceFullPath "resources.pri") -Force
     Write-Host "Staged package identity resource maps: $(($copied | Sort-Object -Unique) -join ', ')"
+    Write-Host "Staged external-location package resource map: $(Join-Path $sourceFullPath "resources.pri")"
 }
 
 $manifestFullPath = Resolve-FromRepositoryRoot -Path $ManifestPath
@@ -476,7 +549,6 @@ if (-not $targetDeviceFamily) {
 if ([version]$targetDeviceFamily.GetAttribute("MinVersion") -lt [version]"10.0.19041.0") {
     $targetDeviceFamily.SetAttribute("MinVersion", "10.0.19041.0")
 }
-
 $application = [System.Xml.XmlElement]$doc.SelectSingleNode("/appx:Package/appx:Applications/appx:Application[@Id='App']", $ns)
 if (-not $application) {
     throw "Package manifest is missing Application Id='App'."
@@ -520,16 +592,16 @@ foreach ($assetPath in $assetPaths) {
     Copy-ManifestAsset -RelativePath $assetPath -SourceRoot $sourceManifestDir -DestinationRoot $stagingFullPath
 }
 
+$stagedManifestPath = Join-Path $stagingFullPath "AppxManifest.xml"
+$doc.Save($stagedManifestPath)
+Write-Host "Staged package identity manifest: $stagedManifestPath"
+
 if ($PayloadRoot) {
-    Copy-PayloadResourceIndexes -SourceRoot $PayloadRoot -DestinationRoot $stagingFullPath
+    Copy-PayloadResourceIndexes -SourceRoot $PayloadRoot -DestinationRoot $stagingFullPath -StagedManifestPath $stagedManifestPath
 }
 else {
     Write-Warning "No payload root was provided; package identity resource maps were not staged."
 }
-
-$stagedManifestPath = Join-Path $stagingFullPath "AppxManifest.xml"
-$doc.Save($stagedManifestPath)
-Write-Host "Staged package identity manifest: $stagedManifestPath"
 
 if ($SkipPack) {
     return
