@@ -84,7 +84,7 @@ public sealed class PackageIdentityManifestTests
             Assert.Equal("mediumIL", (string?)application.Attribute(Uap10Ns + "TrustLevel"));
             Assert.Equal("win32App", (string?)application.Attribute(Uap10Ns + "RuntimeBehavior"));
             Assert.Null(application.Attribute("EntryPoint"));
-            Assert.Equal("none", (string?)visualElements.Attribute("AppListEntry"));
+            Assert.Null(visualElements.Attribute("AppListEntry"));
             Assert.Contains(
                 application.Descendants(UapNs + "Protocol"),
                 element => (string?)element.Attribute("Name") == "openclaw");

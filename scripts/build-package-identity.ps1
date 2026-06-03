@@ -562,7 +562,8 @@ $visualElements = [System.Xml.XmlElement]$application.SelectSingleNode("uap:Visu
 if (-not $visualElements) {
     throw "Application Id='App' is missing uap:VisualElements."
 }
-$visualElements.SetAttribute("AppListEntry", "none")
+# Settings privacy pages only enumerate user-visible package apps for per-app consent.
+$visualElements.RemoveAttribute("AppListEntry")
 
 $capabilities = [System.Xml.XmlElement]$doc.SelectSingleNode("/appx:Package/appx:Capabilities", $ns)
 if (-not $capabilities) {
